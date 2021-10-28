@@ -5,15 +5,12 @@ import os
 import re
 import subprocess
 
-def get_maintainer_list(script, filepath):
+def get_maintainer_list(script_path, patch_path):
 	maintainer_list = []
-
-	if os.path.isfile(script) == False:
-		return []
 
 	# | sed 's/ *([^)]*) *//g' | sed 's/"//g' | sed 's/^\(.*\)$/--cc="\1" /' | tr -d '\n'
 
-	p1 = subprocess.Popen([script, filepath], stdout = subprocess.PIPE, text = True)
+	p1 = subprocess.Popen([script_path, patch_path], stdout = subprocess.PIPE, text = True)
 	# remove the supporter info
 	p2 = subprocess.Popen(['sed', 's/ *([^)]*) *//g'], stdin = p1.stdout, stdout = subprocess.PIPE, text = True)
 	p1.stdout.close()
@@ -39,11 +36,28 @@ def get_maintainer_list(script, filepath):
 
 	return maintainer_list
 
+def process_patch_file(check_patch_script, get_maintainer_script, patch_file, cc_list):
+	print('Patch %s found' % (patch_file))
+
+	output = subprocess.check_output([check_patch_script, patch_file], text = True)
+	print('\nCheck patch:\n%s' % (output))
+
+	print('Get maintainer: ', end = '')
+	maintainer_list = get_maintainer_list(get_maintainer_script, patch_file)
+
+	# use list instead of set to maintain the order
+	for maintainer in maintainer_list:
+		if maintainer not in cc_list:
+			print('  add %s to cc list' % (maintainer))
+			cc_list.append(maintainer)
+
+	return
+
 def main():
 	check_patch_script = './scripts/checkpatch.pl'
 	get_maintainer_script = './scripts/get_maintainer.pl'
 	cc_list = []
-	series = False
+	cover_letter = False
 
 	parser = argparse.ArgumentParser()
 	parser.add_argument('patch_file', nargs = '?', default = '', help = 'patch file to upstream')
@@ -66,56 +80,39 @@ def main():
 		# upstream a specific patch file
 		patch_file = os.path.abspath('./' + args.patch_file)
 
-		if prog.match(patch_file) == None:
-			print('Not a patch file')
-			return
 		if os.path.isfile(patch_file) == False:
 			print('Patch file does not exist')
 			return
+		if prog.match(patch_file) == None:
+			print('Not a patch file')
+			return
 
-		print('Patch %s found' % (patch_file))
-
-		output = subprocess.check_output([check_patch_script, patch_file], text = True)
-		print('\nCheck patch result:\n%s' % (output))
-
-		print('Get maintainer result: ', end = '')
-		maintainer_list = get_maintainer_list(get_maintainer_script, patch_file)
-
-		# use list instead of set to maintain the order
-		for maintainer in maintainer_list:
-			if maintainer not in cc_list:
-				print('  add %s to cc list' % (maintainer))
-				cc_list.append(maintainer)
+		# update the cc list
+		process_patch_file(check_patch_script, get_maintainer_script, patch_file, cc_list)
 	else:
-		# upstream all patch files
-		series = True
-
 		# walk in current directory
 		for dirpath, dirnames, filenames in os.walk('.'):
 			for filename in filenames:
 				if filename == '0000-cover-letter.patch':
+					# upstream all patch files
+					cover_letter = True
 					continue
-				if prog.match(filename) == None:
+
+				tmp = os.path.join(dirpath, filename)
+				patch_file = os.path.abspath(tmp)
+
+				if prog.match(patch_file) == None:
 					continue
 
-				filepath = os.path.join(dirpath, filename)
-
-				print('\nPatch %s found' % (filepath))
-
-				output = subprocess.check_output([check_patch_script, filepath], text = True)
-				print('\nCheck patch result:\n%s' % (output))
-
-				print('Get maintainer result: ', end = '')
-				maintainer_list = get_maintainer_list(get_maintainer_script, filepath)
-
-				# use list instead of set to maintain the order
-				for maintainer in maintainer_list:
-					if maintainer not in cc_list:
-						print('  add %s to cc list' % (maintainer))
-						cc_list.append(maintainer)
+				# update the cc list
+				process_patch_file(check_patch_script, get_maintainer_script, patch_file, cc_list)
 
 			# no need to walk inside
 			break
+
+		if cover_letter == False:
+			print('No cover letter found')
+			return
 
 	# output the upstream command
 	print('\nUpstream command:\ngit send-email --to=alsa-devel@alsa-project.org ', end = '')
@@ -123,7 +120,7 @@ def main():
 	for cc in cc_list:
 		print('--cc="%s" ' % (cc), end = '')
 
-	if series == False:
+	if args.patch_file != '':
 		print('--signoff %s' % (args.patch_file))
 	else:
 		print('--signoff --to-cover --cc-cover ./*.patch')
