@@ -24,10 +24,8 @@ def get_maintainer_list(script, filepath):
 	outs, errs = p3.communicate()
 	#print('outout: %s' % (outs))
 
-	print('Patch %s found' % (filepath))
-
 	maintainers = str(outs).split('\n')
-	print('  %d maintainers found' % (len(maintainers)))
+	print('%d maintainers found' % (len(maintainers)))
 
 	for maintainer in maintainers:
 		if len(maintainer) == 0:
@@ -42,7 +40,8 @@ def get_maintainer_list(script, filepath):
 	return maintainer_list
 
 def main():
-	script = './scripts/get_maintainer.pl'
+	check_patch_script = './scripts/checkpatch.pl'
+	get_maintainer_script = './scripts/get_maintainer.pl'
 	cc_list = []
 	series = False
 
@@ -51,7 +50,12 @@ def main():
 
 	args = parser.parse_args()
 
-	if os.path.isfile(script) == False:
+	if os.path.isfile(check_patch_script) == False:
+		print('Cannot find the check patch script')
+		print('Please run this script under Linux source root directory')
+		return
+
+	if os.path.isfile(get_maintainer_script) == False:
 		print('Cannot find the get maintainer script')
 		print('Please run this script under Linux source root directory')
 		return
@@ -69,7 +73,13 @@ def main():
 			print('Patch file does not exist')
 			return
 
-		maintainer_list = get_maintainer_list(script, patch_file)
+		print('Patch %s found' % (patch_file))
+
+		output = subprocess.check_output([check_patch_script, patch_file], text = True)
+		print('\nCheck patch result:\n%s' % (output))
+
+		print('Get maintainer result: ', end = '')
+		maintainer_list = get_maintainer_list(get_maintainer_script, patch_file)
 
 		# use list instead of set to maintain the order
 		for maintainer in maintainer_list:
@@ -90,7 +100,13 @@ def main():
 
 				filepath = os.path.join(dirpath, filename)
 
-				maintainer_list = get_maintainer_list(script, filepath)
+				print('\nPatch %s found' % (filepath))
+
+				output = subprocess.check_output([check_patch_script, filepath], text = True)
+				print('\nCheck patch result:\n%s' % (output))
+
+				print('Get maintainer result: ', end = '')
+				maintainer_list = get_maintainer_list(get_maintainer_script, filepath)
 
 				# use list instead of set to maintain the order
 				for maintainer in maintainer_list:
@@ -100,8 +116,6 @@ def main():
 
 			# no need to walk inside
 			break
-
-
 
 	# output the upstream command
 	print('\nUpstream command:\ngit send-email --to=alsa-devel@alsa-project.org ', end = '')
