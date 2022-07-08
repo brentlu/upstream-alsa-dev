@@ -39,8 +39,12 @@ def get_maintainer_list(script_path, patch_path):
 def process_patch_file(check_patch_script, get_maintainer_script, patch_file, cc_list):
 	print('Patch %s found' % (patch_file))
 
-	output = subprocess.check_output([check_patch_script, patch_file], text = True)
-	print('\nCheck patch:\n%s' % (output))
+	try:
+		output = subprocess.check_output([check_patch_script, patch_file], text = True)
+		print('\nCheck patch:\n%s' % (output))
+	except subprocess.CalledProcessError as e:
+		# error or warning found in the patch
+		print('\nCheck patch:\n%s' % (e.output))
 
 	print('Get maintainer: ', end = '')
 	maintainer_list = get_maintainer_list(get_maintainer_script, patch_file)
